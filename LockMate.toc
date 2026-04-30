@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: |cff9966ffLock|rMate
+## Notes: Warlock summon queue with soul shard management and party sync
+## Author: LockMate
+## Version: 1.0.0
+## SavedVariables: LockMateDB
+
+LockMate.lua
