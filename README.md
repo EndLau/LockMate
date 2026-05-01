@@ -86,7 +86,16 @@ Default: `Summoning %s. Click the portal!`
 
 ---
 
-## Slash Commands
+## Changelog
+
+### v1.1.0
+- **Group membership check** — players are now only added to the summon queue if they are in your current party or raid. Previously a whisper containing `123` from anyone, including players you were no longer grouped with, would appear in the list.
+- **Queue auto-clears on group change** — when a player leaves the group they are automatically removed from the queue. If you leave or the group fully disbands, the entire queue is wiped immediately.
+- **Self excluded from queue** — your own character name will never appear in your local queue list, even if you type `123` yourself or receive a sync from another LockMate user.
+- **Party leader chat now detected** — previously the party leader's messages fired `CHAT_MSG_PARTY_LEADER` instead of `CHAT_MSG_PARTY`, causing their `123` to be silently ignored. Both events are now handled.
+
+### v1.0.0
+- Initial public release.
 
 | Command | Description |
 |---------|-------------|

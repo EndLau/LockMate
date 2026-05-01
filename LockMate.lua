@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
---  LockMate  v1.0.0
+--  LockMate  v1.1.0
 --  Warlock Summon Queue Manager for WoW 3.3.5a
 --
 --  /lm              – toggle settings
@@ -200,6 +200,7 @@ end
 local RefreshUI
 
 local function QueueAdd(name, broadcast)
+    if name == UnitName("player") then return end   -- never queue yourself
     if inQueue[name] then return end
     inQueue[name] = true
     table.insert(queue, {name=name, summoned=false})
@@ -237,13 +238,30 @@ local function DoAnnounce(name)
 end
 
 -- ── Chat ──────────────────────────────────────────────────────
+local function IsInMyGroup(name)
+    if GetNumRaidMembers() > 0 then
+        for i = 1, MAX_RAID_MEMBERS do
+            local u = "raid"..i
+            if UnitName(u) == name then return true end
+        end
+    elseif GetNumPartyMembers() > 0 then
+        for i = 1, GetNumPartyMembers() do
+            local u = "party"..i
+            if UnitName(u) == name then return true end
+        end
+    end
+    return false
+end
+
 local function OnChat(event, message, author)
     local name = StripRealm(author)
     if name == UnitName("player") then return end
     if not message:find("123") then return end
+    -- Only queue players who are actually in your current group/raid
+    if not IsInMyGroup(name) then return end
     if (event=="CHAT_MSG_RAID" or event=="CHAT_MSG_RAID_LEADER") and DB("listenRaid") then
         QueueAdd(name, true)
-    elseif event=="CHAT_MSG_PARTY" and DB("listenParty") then
+    elseif (event=="CHAT_MSG_PARTY" or event=="CHAT_MSG_PARTY_LEADER") and DB("listenParty") then
         QueueAdd(name, true)
     elseif event=="CHAT_MSG_WHISPER" and DB("listenWhisper") then
         QueueAdd(name, true)
@@ -760,6 +778,7 @@ end
 local EF = CreateFrame("Frame")
 EF:RegisterEvent("PLAYER_ENTERING_WORLD")
 EF:RegisterEvent("CHAT_MSG_PARTY")
+EF:RegisterEvent("CHAT_MSG_PARTY_LEADER")
 EF:RegisterEvent("CHAT_MSG_RAID")
 EF:RegisterEvent("CHAT_MSG_RAID_LEADER")
 EF:RegisterEvent("CHAT_MSG_WHISPER")
@@ -779,17 +798,33 @@ EF:SetScript("OnEvent", function(self, event, ...)
         return
     end
     if not initialized then return end
-    if event=="CHAT_MSG_PARTY" or event=="CHAT_MSG_RAID"
-    or event=="CHAT_MSG_RAID_LEADER" or event=="CHAT_MSG_WHISPER" then
+    if event=="CHAT_MSG_PARTY" or event=="CHAT_MSG_PARTY_LEADER"
+    or event=="CHAT_MSG_RAID" or event=="CHAT_MSG_RAID_LEADER"
+    or event=="CHAT_MSG_WHISPER" then
         local msg,author=...; OnChat(event,msg,author)
     elseif event=="CHAT_MSG_ADDON" then
         local prefix,msg,channel,sender=...; OnAddon(prefix,msg,channel,sender)
     elseif event=="BAG_UPDATE" then
         PurgeShards(false)
     elseif event=="PARTY_MEMBERS_CHANGED" or event=="RAID_ROSTER_UPDATE" then
+        -- Remove anyone from the queue who is no longer in the group
+        local toRemove = {}
+        for _, v in ipairs(queue) do
+            if not IsInMyGroup(v.name) then
+                table.insert(toRemove, v.name)
+            end
+        end
+        for _, name in ipairs(toRemove) do
+            QueueRemove(name, false)  -- local only; they already left
+        end
+        -- If we're no longer in any group at all, wipe everything
+        if GetNumRaidMembers() == 0 and GetNumPartyMembers() == 0 then
+            queue, inQueue, summonDone = {}, {}, {}
+            RefreshUI()
+        end
         if not syncPending then
-            syncPending=true
-            After(2,function() syncPending=false; Send("SYNC:") end)
+            syncPending = true
+            After(2, function() syncPending=false; Send("SYNC:") end)
         end
     end
 end)
