@@ -257,14 +257,14 @@ local function OnChat(event, message, author)
     local name = StripRealm(author)
     if name == UnitName("player") then return end
     if not message:find("123") then return end
-    -- Only queue players who are actually in your current group/raid
-    if not IsInMyGroup(name) then return end
+    -- Raid/party chat: sender is in the group by definition, no extra check needed
     if (event=="CHAT_MSG_RAID" or event=="CHAT_MSG_RAID_LEADER") and DB("listenRaid") then
         QueueAdd(name, true)
     elseif (event=="CHAT_MSG_PARTY" or event=="CHAT_MSG_PARTY_LEADER") and DB("listenParty") then
         QueueAdd(name, true)
     elseif event=="CHAT_MSG_WHISPER" and DB("listenWhisper") then
-        QueueAdd(name, true)
+        -- Whispers can come from anyone, so check group membership here
+        if IsInMyGroup(name) then QueueAdd(name, true) end
     end
 end
 
