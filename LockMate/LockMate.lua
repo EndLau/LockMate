@@ -303,26 +303,40 @@ local function OnAddon(prefix, msg, channel, sender)
 end
 
 -- ── Secure list buttons ───────────────────────────────────────
+-- Each list entry consists of:
+--   slot  — a plain Frame, freely positionable from addon code
+--   btn   — a SecureActionButtonTemplate child that fills the slot
+-- RefreshUI repositions the SLOT (regular frame), never the secure button.
+-- This avoids the restriction that prevents ClearAllPoints/SetPoint/SetWidth
+-- being called on secure frames from addon code.
 local scrollOffset = 0
 
 local function GetOrCreateButton(i)
     if Buttons[i] then return Buttons[i] end
-    local btn = CreateFrame("Button", nil, ScrollChild, "SecureActionButtonTemplate")
-    btn:SetHeight(26)
+
+    -- Plain container frame — no restrictions on positioning
+    local slot = CreateFrame("Frame", nil, ScrollChild)
+    slot:SetHeight(26)
+
+    local bg = slot:CreateTexture(nil,"BACKGROUND"); bg:SetAllPoints(); slot.bg = bg
+    local hl = slot:CreateTexture(nil,"HIGHLIGHT");  hl:SetAllPoints(); hl:SetTexture(1,1,1,0.07)
+    local txt = slot:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
+    txt:SetPoint("LEFT", slot,"LEFT",  6, 0)
+    txt:SetPoint("RIGHT",slot,"RIGHT", -6, 0)
+    txt:SetJustifyH("LEFT")
+    slot.txt = txt
+
+    -- Secure button that fills the slot — handles spell casting safely
+    local btn = CreateFrame("Button", nil, slot, "SecureActionButtonTemplate")
+    btn:SetAllPoints(slot)
     btn:RegisterForClicks("LeftButtonUp","RightButtonUp")
     btn:SetAttribute("type1","macro")
     btn:SetAttribute("macrotext1","")
     btn:SetAttribute("type2","")
 
-    local bg = btn:CreateTexture(nil,"BACKGROUND"); bg:SetAllPoints(); btn.bg = bg
-    local hl = btn:CreateTexture(nil,"HIGHLIGHT"); hl:SetAllPoints(); hl:SetTexture(1,1,1,0.07)
-    local txt = btn:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
-    txt:SetPoint("LEFT",btn,"LEFT",6,0); txt:SetPoint("RIGHT",btn,"RIGHT",-6,0)
-    txt:SetJustifyH("LEFT"); btn.txt = txt
-
     btn:SetScript("PreClick", function(self, button)
         if button ~= "LeftButton" then return end
-        local e = queue[self.idx]
+        local e = queue[slot.idx]
         if not e then self:SetAttribute("macrotext1",""); return end
         if IsInCombat(e.name) then
             SendChatMessage("Can't summon you while in combat!","WHISPER",nil,e.name)
@@ -333,20 +347,20 @@ local function GetOrCreateButton(i)
             self:SetAttribute("macrotext1",""); return
         end
         self:SetAttribute("macrotext1","/target "..e.name.."\n/cast Ritual of Summoning")
-        self._summonName = e.name
+        slot._summonName = e.name
     end)
 
     btn:SetScript("PostClick", function(self, button)
         if button == "LeftButton" then
-            local name = self._summonName; self._summonName = nil
+            local name = slot._summonName; slot._summonName = nil
             if name and self:GetAttribute("macrotext1") ~= "" then DoAnnounce(name) end
         elseif button == "RightButton" then
-            local e = queue[self.idx]; if e then QueueRemove(e.name, true) end
+            local e = queue[slot.idx]; if e then QueueRemove(e.name, true) end
         end
     end)
 
     btn:SetScript("OnEnter", function(self)
-        local e = queue[self.idx]; if not e then return end
+        local e = queue[slot.idx]; if not e then return end
         GameTooltip:SetOwner(self,"ANCHOR_RIGHT"); GameTooltip:ClearLines()
         GameTooltip:AddLine(e.name,1,0.85,0)
         GameTooltip:AddLine("|cffffd700Left-click|r  — Summon",1,1,1)
@@ -355,9 +369,10 @@ local function GetOrCreateButton(i)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    btn:Hide()
-    Buttons[i] = btn
-    return btn
+
+    slot:Hide()
+    Buttons[i] = slot
+    return slot
 end
 
 -- ── RefreshUI ─────────────────────────────────────────────────
@@ -375,17 +390,20 @@ RefreshUI = function()
     if scrollOffset > maxOff then scrollOffset = maxOff end
     ScrollFrame:SetVerticalScroll(scrollOffset)
     for i, entry in ipairs(queue) do
-        local btn = GetOrCreateButton(i)
-        btn.idx = i; btn:ClearAllPoints(); btn:SetWidth(w)
-        btn:SetPoint("TOPLEFT",ScrollChild,"TOPLEFT",0,-(i-1)*26)
+        local slot = GetOrCreateButton(i)
+        -- slot is a plain Frame — ClearAllPoints/SetPoint/SetWidth are unrestricted
+        slot.idx = i
+        slot:ClearAllPoints()
+        slot:SetWidth(w)
+        slot:SetPoint("TOPLEFT", ScrollChild, "TOPLEFT", 0, -(i-1)*26)
         if entry.summoned then
-            btn.bg:SetTexture(0.08,0.40,0.08,0.70)
-            btn.txt:SetText("|cff55ff55"..entry.name.."  [Summoned]|r")
+            slot.bg:SetTexture(0.08,0.40,0.08,0.70)
+            slot.txt:SetText("|cff55ff55"..entry.name.."  [Summoned]|r")
         else
-            btn.bg:SetTexture(0.05,0.05,0.22,0.70)
-            btn.txt:SetText("|cffccccff"..entry.name.."|r")
+            slot.bg:SetTexture(0.05,0.05,0.22,0.70)
+            slot.txt:SetText("|cffccccff"..entry.name.."|r")
         end
-        btn:Show()
+        slot:Show()
     end
     for i=#queue+1,#Buttons do Buttons[i]:Hide() end
 end
